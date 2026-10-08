@@ -1,0 +1,261 @@
+{
+  "info": {
+    "name": "Factory Traffic Management",
+    "description": "REST API collection for Junction A traffic control system. Base URL variable defaults to http://localhost:4000.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/health"
+      }
+    },
+    {
+      "name": "Junctions",
+      "item": [
+        {
+          "name": "List Junctions",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/junctions"
+          }
+        },
+        {
+          "name": "Get Junction A",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/junctions/A"
+          }
+        },
+        {
+          "name": "Junction A Status",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/junctions/A/status"
+          }
+        },
+        {
+          "name": "Junction A History",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/junctions/A/history?limit=30",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "junctions", "A", "history"],
+              "query": [
+                { "key": "limit", "value": "30" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Junction B",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"B\",\n  \"name\": \"Junction B\"\n}"
+            },
+            "url": "{{baseUrl}}/api/junctions"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sensor Events",
+      "item": [
+        {
+          "name": "TRUCK arrives NORTH",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_id\": \"evt-truck-{{$timestamp}}\",\n  \"junction_id\": \"A\",\n  \"direction\": \"NORTH\",\n  \"event_type\": \"VEHICLE_ARRIVED\",\n  \"vehicle_id\": \"VH-501\",\n  \"vehicle_type\": \"TRUCK\",\n  \"sequence_no\": 1501\n}"
+            },
+            "url": "{{baseUrl}}/api/sensor-events"
+          }
+        },
+        {
+          "name": "EMERGENCY arrives EAST",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_id\": \"evt-emg-{{$timestamp}}\",\n  \"junction_id\": \"A\",\n  \"direction\": \"EAST\",\n  \"event_type\": \"VEHICLE_ARRIVED\",\n  \"vehicle_id\": \"EMG-1\",\n  \"vehicle_type\": \"EMERGENCY\"\n}"
+            },
+            "url": "{{baseUrl}}/api/sensor-events"
+          }
+        },
+        {
+          "name": "FORKLIFT arrives SOUTH",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_id\": \"evt-fork-{{$timestamp}}\",\n  \"junction_id\": \"A\",\n  \"direction\": \"SOUTH\",\n  \"event_type\": \"VEHICLE_ARRIVED\",\n  \"vehicle_id\": \"VH-777\",\n  \"vehicle_type\": \"FORKLIFT\"\n}"
+            },
+            "url": "{{baseUrl}}/api/sensor-events"
+          }
+        },
+        {
+          "name": "Vehicle Cleared",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_id\": \"evt-clear-{{$timestamp}}\",\n  \"junction_id\": \"A\",\n  \"direction\": \"NORTH\",\n  \"event_type\": \"VEHICLE_CLEARED\",\n  \"vehicle_id\": \"VH-501\"\n}"
+            },
+            "url": "{{baseUrl}}/api/sensor-events"
+          }
+        },
+        {
+          "name": "Duplicate Event (Idempotency Test)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_id\": \"evt-fixed-dup-001\",\n  \"junction_id\": \"A\",\n  \"direction\": \"WEST\",\n  \"event_type\": \"VEHICLE_ARRIVED\",\n  \"vehicle_id\": \"VH-DUP\",\n  \"vehicle_type\": \"FORKLIFT\"\n}"
+            },
+            "url": "{{baseUrl}}/api/sensor-events"
+          },
+          "description": "Run this request twice. Second call should return duplicate: true and queue count should not increment."
+        }
+      ]
+    },
+    {
+      "name": "Commands",
+      "item": [
+        {
+          "name": "Manual Green WEST",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"command\": \"MANUAL_GREEN_REQUEST\",\n  \"direction\": \"WEST\"\n}"
+            },
+            "url": "{{baseUrl}}/api/junctions/A/commands"
+          }
+        },
+        {
+          "name": "Manual Green NORTH",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"command\": \"MANUAL_GREEN_REQUEST\",\n  \"direction\": \"NORTH\"\n}"
+            },
+            "url": "{{baseUrl}}/api/junctions/A/commands"
+          }
+        },
+        {
+          "name": "Return to AUTOMATIC",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"command\": \"RETURN_TO_AUTOMATIC\"\n}"
+            },
+            "url": "{{baseUrl}}/api/junctions/A/commands"
+          }
+        },
+        {
+          "name": "Clear Emergency",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"command\": \"CLEAR_EMERGENCY\"\n}"
+            },
+            "url": "{{baseUrl}}/api/junctions/A/commands"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Controller Events",
+      "item": [
+        {
+          "name": "ACK — Command Executed",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"command_id\": \"cmd-REPLACE-ME\",\n  \"junction_id\": \"A\",\n  \"status\": \"ACK\",\n  \"actual_state\": \"GREEN\",\n  \"direction\": \"WEST\"\n}"
+            },
+            "url": "{{baseUrl}}/api/controller-events"
+          },
+          "description": "Replace cmd-REPLACE-ME with the command_id shown in the dashboard's pending command banner."
+        },
+        {
+          "name": "NACK — Command Rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"command_id\": \"cmd-REPLACE-ME\",\n  \"junction_id\": \"A\",\n  \"status\": \"NACK\"\n}"
+            },
+            "url": "{{baseUrl}}/api/controller-events"
+          }
+        },
+        {
+          "name": "TIMEOUT — Command Timed Out",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"command_id\": \"cmd-REPLACE-ME\",\n  \"junction_id\": \"A\",\n  \"status\": \"TIMEOUT\"\n}"
+            },
+            "url": "{{baseUrl}}/api/controller-events"
+          }
+        }
+      ]
+    }
+  ]
+}

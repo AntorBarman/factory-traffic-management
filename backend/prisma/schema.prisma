@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")  // 
+}
+
+model Junction {
+  id               String   @id
+  name             String
+  mode             String   @default("AUTOMATIC")
+  phase            String   @default("ALL_RED")
+  controllerStatus String   @default("ONLINE")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  state      JunctionState?
+  queues     QueueEntry[]
+  events     SensorEvent[]
+  commands   Command[]
+  auditLogs  AuditLog[]
+}
+
+model JunctionState {
+  junctionId      String   @id
+  desiredNorth    String   @default("RED")
+  desiredSouth    String   @default("RED")
+  desiredEast     String   @default("RED")
+  desiredWest     String   @default("RED")
+  actualNorth     String   @default("RED")
+  actualSouth     String   @default("RED")
+  actualEast      String   @default("RED")
+  actualWest      String   @default("RED")
+  emergencyActive Boolean  @default(false)
+  emergencyDirection String?
+  manualOverride  Boolean  @default(false)
+  version         Int      @default(0)
+  updatedAt       DateTime @updatedAt
+
+  junction Junction @relation(fields: [junctionId], references: [id])
+}
+
+model SensorEvent {
+  id              String   @id @default(cuid())
+  eventId         String   @unique
+  junctionId      String
+  direction       String
+  eventType       String
+  vehicleId       String?
+  vehicleType     String?
+  sequenceNo      Int?
+  sensorTimestamp DateTime?
+  receivedAt      DateTime @default(now())
+  status          String   @default("PROCESSED")
+
+  junction Junction @relation(fields: [junctionId], references: [id])
+
+  @@index([junctionId, receivedAt])
+}
+
+model QueueEntry {
+  id          String    @id @default(cuid())
+  junctionId  String
+  vehicleId   String
+  direction   String
+  vehicleType String
+  priority    Int
+  arrivedAt   DateTime  @default(now())
+  clearedAt   DateTime?
+  status      String    @default("WAITING")
+
+  junction Junction @relation(fields: [junctionId], references: [id])
+
+  @@index([junctionId, status])
+  @@index([junctionId, direction, status])
+}
+
+model Command {
+  id             String    @id @default(cuid())
+  commandId      String    @unique
+  junctionId     String
+  requestedState String
+  phase          String
+  status         String    @default("PENDING")
+  createdAt      DateTime  @default(now())
+  sentAt         DateTime?
+  ackedAt        DateTime?
+
+  junction Junction @relation(fields: [junctionId], references: [id])
+
+  @@index([junctionId, status])
+}
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  junctionId    String
+  eventType     String
+  direction     String?
+  previousState String?
+  newState      String?
+  commandId     String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  junction Junction @relation(fields: [junctionId], references: [id])
+
+  @@index([junctionId, createdAt])
+}
