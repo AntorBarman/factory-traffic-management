@@ -1,23 +1,15 @@
 import { prisma } from '../infrastructure/prisma';
 import { expireStaleCommands } from './controller-event.service';
 import { TIMINGS } from '../domain/types';
+import { runAutomaticScheduler } from './automatic-scheduler';
 
-/**
- * Background worker.
- *
- * Two responsibilities:
- * 1. Expire stale PENDING commands after timeout.
- * 2. (Future) Drive phase transitions when their scheduled time arrives.
- *
- * Runs on a fixed interval (non-blocking). No sleep() in request handlers.
- */
 let started = false;
 
 export function startBackgroundWorker(): void {
   if (started) return;
   started = true;
 
-  // Command timeout check — every 2 seconds
+  // ── Task 1: Expire stale PENDING commands (every 2s)
   setInterval(async () => {
     try {
       const n = await expireStaleCommands(
@@ -27,10 +19,28 @@ export function startBackgroundWorker(): void {
       if (n > 0) {
         console.log(`[worker] Expired ${n} stale command(s)`);
       }
-    } catch (err) {
-      console.error('[worker] timeout scan failed:', err);
+    } catch (err: any) {
+      console.error('[worker] timeout scan failed:', err?.message ?? err);
     }
   }, 2000);
 
+  // ── Task 2: Automatic traffic scheduler (every 3s)
+  setInterval(async () => {
+    try {
+      await runAutomaticScheduler();
+    } catch (err: any) {
+      console.error('[worker] auto-scheduler failed:', err?.message ?? err);
+    }
+  }, 3000);
+
   console.log('[worker] Background worker started');
 }
+
+// Prevent unhandled rejections from crashing the process
+process.on('unhandledRejection', (reason: any) => {
+  console.error('[process] Unhandled rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[process] Uncaught exception:', err);
+});

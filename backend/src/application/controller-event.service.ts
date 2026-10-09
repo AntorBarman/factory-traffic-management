@@ -1,15 +1,6 @@
 import { withJunctionLock } from '../infrastructure/db-lock';
 import { SignalState } from '../domain/types';
 
-/**
- * Controller Event Service.
- *
- * Handles ACK messages from the physical controller. Updates `actual_state`
- * ONLY when the ACK confirms the change.
- *
- * Duplicate ACKs are idempotent (state already correct → no-op).
- */
-
 export interface ControllerEventInput {
   command_id: string;
   junction_id: string;
@@ -35,26 +26,66 @@ export async function processControllerEvent(
       return { accepted: false, message: 'Unknown command_id' };
     }
 
-    // Idempotency: if already resolved, no-op.
-    if (command.status === 'ACK' || command.status === 'FAILED') {
+    // Idempotency: already terminal
+    if (
+      command.status === 'ACK' ||
+      command.status === 'FAILED' ||
+      command.status === 'TIMEOUT'
+    ) {
       return {
         accepted: true,
-        message: `Command already in terminal status: ${command.status}`,
+        message: `Command already terminal: ${command.status}`,
       };
     }
 
-    if (input.status === 'ACK' && input.actual_state && input.direction) {
-      // Update actual signal state for the reported direction
-      const dirKey = `actual${capitalize(input.direction)}` as
-        | 'actualNorth'
-        | 'actualSouth'
-        | 'actualEast'
-        | 'actualWest';
-
-      await tx.junctionState.update({
+    // ── ACK ──────────────────────────────────────────────
+    if (input.status === 'ACK') {
+      // Sync actual state to desired state for ALL directions
+      const state = await tx.junctionState.findUnique({
         where: { junctionId: input.junction_id },
-        data: { [dirKey]: input.actual_state } as any,
       });
+
+      if (state) {
+        await tx.junctionState.update({
+          where: { junctionId: input.junction_id },
+          data: {
+            actualNorth: state.desiredNorth,
+            actualSouth: state.desiredSouth,
+            actualEast: state.desiredEast,
+            actualWest: state.desiredWest,
+          },
+        });
+
+        // Sync junction.phase from desired signals
+        const signals = [
+          state.desiredNorth,
+          state.desiredSouth,
+          state.desiredEast,
+          state.desiredWest,
+        ];
+        if (signals.every((s) => s === 'RED')) {
+          await tx.junction.update({
+            where: { id: input.junction_id },
+            data: { phase: 'ALL_RED' },
+          });
+        } else if (
+          state.desiredNorth === 'GREEN' ||
+          state.desiredSouth === 'GREEN'
+        ) {
+          await tx.junction.update({
+            where: { id: input.junction_id },
+            data: { phase: 'NORTH_SOUTH' },
+          });
+        } else if (
+          state.desiredEast === 'GREEN' ||
+          state.desiredWest === 'GREEN'
+        ) {
+          await tx.junction.update({
+            where: { id: input.junction_id },
+            data: { phase: 'EAST_WEST' },
+          });
+        }
+      }
 
       await tx.command.update({
         where: { commandId: input.command_id },
@@ -74,6 +105,7 @@ export async function processControllerEvent(
       return { accepted: true, message: 'ACK recorded' };
     }
 
+    // ── NACK ─────────────────────────────────────────────
     if (input.status === 'NACK') {
       await tx.command.update({
         where: { commandId: input.command_id },
@@ -93,6 +125,7 @@ export async function processControllerEvent(
       return { accepted: true, message: 'NACK recorded; controller degraded' };
     }
 
+    // ── TIMEOUT ──────────────────────────────────────────
     if (input.status === 'TIMEOUT') {
       await tx.command.update({
         where: { commandId: input.command_id },
@@ -109,7 +142,10 @@ export async function processControllerEvent(
           commandId: input.command_id,
         },
       });
-      return { accepted: true, message: 'Timeout recorded; controller degraded' };
+      return {
+        accepted: true,
+        message: 'Timeout recorded; controller degraded',
+      };
     }
 
     return { accepted: false, message: 'Invalid controller event' };
@@ -117,8 +153,7 @@ export async function processControllerEvent(
 }
 
 /**
- * Scan for PENDING commands past their timeout window.
- * Called by a background worker.
+ * Expire stale PENDING commands.
  */
 export async function expireStaleCommands(
   prisma: any,
@@ -126,11 +161,9 @@ export async function expireStaleCommands(
 ): Promise<number> {
   const cutoff = new Date(Date.now() - timeoutMs);
   const stale = await prisma.command.findMany({
-    where: {
-      status: 'PENDING',
-      sentAt: { lt: cutoff },
-    },
+    where: { status: 'PENDING', sentAt: { lt: cutoff } },
   });
+
   let expired = 0;
   for (const cmd of stale) {
     await prisma.$transaction(async (tx: any) => {
@@ -153,8 +186,4 @@ export async function expireStaleCommands(
     expired++;
   }
   return expired;
-}
-
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 }

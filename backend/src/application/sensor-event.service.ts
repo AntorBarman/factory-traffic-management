@@ -5,7 +5,10 @@ import {
   VehicleType,
   VEHICLE_PRIORITY,
   Direction,
+  Phase,
+  directionToPhase,
 } from '../domain/types';
+import { executeTransitionStep } from './traffic-controller';
 
 /**
  * Sensor Event Service.
@@ -13,6 +16,9 @@ import {
  * Handles VEHICLE_ARRIVED and VEHICLE_CLEARED events.
  * Guarantees idempotency via `event_id` unique constraint.
  * Enforces queue integrity (never negative).
+ *
+ * Emergency arrivals trigger a safe preemption to the emergency
+ * direction (mode = EMERGENCY, safe GREEN -> YELLOW -> ALL_RED -> GREEN).
  */
 
 export interface SensorEventInput {
@@ -101,7 +107,7 @@ async function handleArrival(
     },
   });
 
-  // Audit
+  // Audit: vehicle detected
   await tx.auditLog.create({
     data: {
       junctionId: input.junction_id,
@@ -115,7 +121,7 @@ async function handleArrival(
     },
   });
 
-  // Emergency: flag state
+  // ── Emergency handling: flag + safe preemption ────────
   if (input.vehicle_type === 'EMERGENCY') {
     await tx.junctionState.update({
       where: { junctionId: input.junction_id },
@@ -124,6 +130,7 @@ async function handleArrival(
         emergencyDirection: input.direction,
       },
     });
+
     await tx.auditLog.create({
       data: {
         junctionId: input.junction_id,
@@ -135,6 +142,52 @@ async function handleArrival(
         },
       },
     });
+
+    // Trigger safe preemption to the emergency direction
+    const currentJunction = await tx.junction.findUnique({
+      where: { id: input.junction_id },
+    });
+
+    if (currentJunction) {
+      const targetPhase = directionToPhase(input.direction);
+
+      if (currentJunction.phase !== targetPhase) {
+        // Switch to EMERGENCY mode so auto-scheduler stays out of the way
+        await tx.junction.update({
+          where: { id: input.junction_id },
+          data: { mode: 'EMERGENCY' },
+        });
+
+        // Begin safe transition: current phase -> YELLOW -> ALL_RED -> target
+        await executeTransitionStep(
+          tx,
+          input.junction_id,
+          currentJunction.phase as Phase,
+          targetPhase
+        );
+
+        await tx.auditLog.create({
+          data: {
+            junctionId: input.junction_id,
+            eventType: 'EMERGENCY_PREEMPT_REQUESTED',
+            direction: input.direction,
+            metadata: {
+              fromPhase: currentJunction.phase,
+              targetPhase,
+            },
+          },
+        });
+
+        console.log(
+          `[emergency] ${input.junction_id}: preempting ${currentJunction.phase} -> ${targetPhase}`
+        );
+      } else {
+        // Already serving the emergency direction
+        console.log(
+          `[emergency] ${input.junction_id}: already serving ${targetPhase}`
+        );
+      }
+    }
   }
 
   return { accepted: true, duplicate: false };
@@ -199,6 +252,10 @@ async function handleCleared(
       await tx.junctionState.update({
         where: { junctionId: input.junction_id },
         data: { emergencyActive: false, emergencyDirection: null },
+      });
+      await tx.junction.update({
+        where: { id: input.junction_id },
+        data: { mode: 'AUTOMATIC' },
       });
       await tx.auditLog.create({
         data: {
