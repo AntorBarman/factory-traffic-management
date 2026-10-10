@@ -6,30 +6,25 @@
     "ignoreDeprecations": "6.0",
     "lib": ["ES2022"],
     "types": ["node"],
-
-    "rootDir": ".",
+    "rootDir": "./src",
     "outDir": "./dist",
-
     "strict": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-
     "sourceMap": true,
     "declaration": false,
     "removeComments": true,
-
     "noImplicitAny": true,
     "strictNullChecks": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
-
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true
   },
-  "include": ["src/**/*.ts", "prisma/**/*.ts", "tests/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "tests", "prisma/seed.ts", "prisma/**/*"]
 }
